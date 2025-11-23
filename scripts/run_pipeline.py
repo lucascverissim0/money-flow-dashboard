@@ -1,5 +1,10 @@
 import sys
+import os
 from pathlib import Path
+
+# Ensure the repo root is in the Python path
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.append(str(ROOT))
 
 import pandas as pd
 import yfinance as yf
