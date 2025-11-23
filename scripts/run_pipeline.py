@@ -1,15 +1,17 @@
 import sys
-import os
 from pathlib import Path
 
-# Ensure the repo root is in the Python path
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.append(str(ROOT))
+# ---------------------------
+# Make sure repo root is on PYTHONPATH
+# ---------------------------
+ROOT = Path(__file__).resolve().parents[1]  # /workspaces/money-flow-dashboard
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
 
 import pandas as pd
 import yfinance as yf
 
-import config  # uses the config.py at repo root
+import config  # now Python should find config.py at the repo root
 
 
 def get_all_tickers_from_universe(universe: dict) -> list:
@@ -38,27 +40,33 @@ def download_universe_prices(tickers, start_date, end_date=None) -> pd.DataFrame
         group_by="ticker",
     )
 
-    # yfinance returns a multi-index column structure when multiple tickers
     records = []
-    for ticker in tickers:
-        if ticker not in data.columns.levels[0]:
-            print(f"WARNING: No data returned for ticker {ticker}")
-            continue
+    # If only one ticker, yfinance returns a single-level columns DF
+    if isinstance(data.columns, pd.MultiIndex):
+        # multi-ticker case
+        for ticker in tickers:
+            if ticker not in data.columns.levels[0]:
+                print(f"WARNING: No data returned for ticker {ticker}")
+                continue
 
-        df_t = data[ticker].copy()
+            df_t = data[ticker].copy()
+            df_t["ticker"] = ticker
+            df_t = df_t.reset_index()  # date becomes a column
+            df_t.columns = [c.lower().replace(" ", "_") for c in df_t.columns]
+            records.append(df_t)
+    else:
+        # single-ticker case
+        ticker = tickers[0]
+        df_t = data.copy()
         df_t["ticker"] = ticker
-        df_t = df_t.reset_index()  # date becomes a column
+        df_t = df_t.reset_index()
         df_t.columns = [c.lower().replace(" ", "_") for c in df_t.columns]
-        # Standardize names
-        df_t = df_t.rename(columns={"adj_close": "adj_close"})
         records.append(df_t)
 
     if not records:
-        print("ERROR: No data downloaded for any ticker.")
-        sys.exit(1)
+        raise RuntimeError("No data downloaded for any ticker.")
 
     prices = pd.concat(records, ignore_index=True)
-    prices = prices.rename(columns={"index": "date"}) if "index" in prices.columns else prices
     prices = prices.sort_values(["ticker", "date"])
 
     return prices
